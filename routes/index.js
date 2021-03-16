@@ -2,8 +2,11 @@ var express = require("express");
 var MongoClient = require("mongodb").MongoClient;
 var mongo = require("mongodb");
 var router = express.Router();
+const { checkSchema, validationResult } = require("express-validator");
+const { body } = require("express-validator/check");
 
-var url = "mongodb+srv://admin:admin@todos.e54ce.mongodb.net/todos?retryWrites=true&w=majority";
+var url =
+  "mongodb+srv://admin:admin@todos.e54ce.mongodb.net/todos?retryWrites=true&w=majority";
 
 router.get("/todos", function (req, res) {
   MongoClient.connect(url, async (err, db) => {
@@ -37,7 +40,6 @@ router.post("/todo/create", function (req, res) {
       dbo.collection("todos").insertOne(obj, function (err, res) {
         if (err) throw err;
 
-        console.log("document created");
         db.close();
       });
       res.status(200).json({ message: "Item saved to your list" });
@@ -71,37 +73,44 @@ router.delete(`/todo/:user_id`, function (req, res) {
   });
 });
 
-router.put("/todo/:user_id", function (req, res) {
-  var id = req.params.user_id;
+router.put(
+  "/todo/:user_id",
+  [
+    body("title").isString(),
+    body("description").isString(),
+    body("completed").isBoolean(),
+  ],
+  function (req, res) {
+    const { errors } = validationResult(req);
 
-  MongoClient.connect(url, async (err, db) => {
-    if (err) throw err;
+    var id = req.params.user_id;
 
-    var dbo = db.db("todos");
-    found = await dbo.collection("todos").findOne({ _id: mongo.ObjectId(id) });
+    MongoClient.connect(url, async (err, db) => {
+      if (err) throw err;
 
-    console.log(found);
-    if (found !== null) {
-      dbo.collection("todos").updateOne(
-        { _id: mongo.ObjectId(id) },
-        {
-          $set: {
-            title: req.body.title,
-            description: req.body.description,
-            completed: req.body.completed,
+      var dbo = db.db("todos");
+
+      if (errors.length === 0) {
+        updated = await dbo.collection("todos").findOneAndUpdate(
+          { _id: mongo.ObjectId(id) },
+          {
+            $set: {
+              title: req.body.title,
+              description: req.body.description,
+              completed: req.body.completed,
+            },
           },
-        },
-        function (err, res) {
-          if (err) throw err;
-
-          db.close();
-        }
-      );
-      res.status(200).json({ message: "Item updated successfully" });
-    } else {
-      res.status(409).json({ error: "Item could not be updated" });
-    }
-  });
-});
+          { returnOriginal: false }
+        );
+        res.status(200).json({
+          message: "Item updated successfully",
+          ...updated.value,
+        });
+      } else {
+        res.status(409).json({ error: "Item could not be updated" });
+      }
+    });
+  }
+);
 
 module.exports = router;
